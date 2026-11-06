@@ -1,5 +1,5 @@
 -- Your OTT Phase 2B: initial schema
--- Run in Supabase SQL Editor. Enable RLS on every user-facing table.
+-- Run once in the Supabase SQL Editor for the NEW Mumbai project.
 create extension if not exists pgcrypto;
 
 create table if not exists public.profiles (
@@ -8,6 +8,24 @@ create table if not exists public.profiles (
   role text not null default 'viewer' check (role in ('viewer','admin')),
   created_at timestamptz not null default now()
 );
+
+-- Automatically create a viewer profile whenever a user signs up.
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (new.id, coalesce(new.raw_user_meta_data ->> 'name', new.email))
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute procedure public.handle_new_user();
 
 create table if not exists public.titles (
   id uuid primary key default gen_random_uuid(),
@@ -59,20 +77,25 @@ create table if not exists public.watchlist (
 );
 
 create table if not exists public.watch_progress (
+  id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   title_id uuid not null references public.titles(id) on delete cascade,
   episode_id uuid references public.episodes(id) on delete cascade,
   position_seconds integer not null default 0 check(position_seconds >= 0),
   duration_seconds integer check(duration_seconds is null or duration_seconds > 0),
-  updated_at timestamptz not null default now(),
-  primary key(user_id, title_id, episode_id)
+  updated_at timestamptz not null default now()
 );
+create index if not exists watch_progress_user_updated_idx
+on public.watch_progress(user_id, updated_at desc);
 
 create or replace function public.is_admin()
 returns boolean language sql stable security definer
-set search_path = public
+set search_path = ''
 as $$
-  select exists(select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin');
+  select exists(
+    select 1 from public.profiles p
+    where p.id = (select auth.uid()) and p.role = 'admin'
+  );
 $$;
 
 alter table public.profiles enable row level security;
@@ -82,29 +105,55 @@ alter table public.episodes enable row level security;
 alter table public.watchlist enable row level security;
 alter table public.watch_progress enable row level security;
 
-create policy "Users read own profile" on public.profiles for select to authenticated using (id = auth.uid() or public.is_admin());
-create policy "Users update own profile" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid() and role = 'viewer');
-create policy "Admins manage profiles" on public.profiles for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "Users read own profile" on public.profiles;
+create policy "Users read own profile" on public.profiles for select to authenticated
+using (id = (select auth.uid()) or public.is_admin());
 
-create policy "Anyone reads published titles" on public.titles for select using (status = 'published' or public.is_admin());
-create policy "Admins manage titles" on public.titles for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "Users update own profile" on public.profiles;
+create policy "Users update own profile" on public.profiles for update to authenticated
+using (id = (select auth.uid())) with check (id = (select auth.uid()) and role = 'viewer');
 
-create policy "Published seasons readable" on public.seasons for select using (
-  public.is_admin() or exists(select 1 from public.titles t where t.id = title_id and t.status = 'published')
-);
-create policy "Admins manage seasons" on public.seasons for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "Admins manage profiles" on public.profiles;
+create policy "Admins manage profiles" on public.profiles for all to authenticated
+using (public.is_admin()) with check (public.is_admin());
 
-create policy "Published episodes readable" on public.episodes for select using (
-  public.is_admin() or (status = 'published' and exists(
-    select 1 from public.seasons s join public.titles t on t.id = s.title_id
-    where s.id = season_id and t.status = 'published'
-  ))
-);
-create policy "Admins manage episodes" on public.episodes for all to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "Anyone reads published titles" on public.titles;
+create policy "Anyone reads published titles" on public.titles for select
+using (status = 'published' or public.is_admin());
 
-create policy "Users manage own watchlist" on public.watchlist for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
-create policy "Users manage own progress" on public.watch_progress for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists "Admins manage titles" on public.titles;
+create policy "Admins manage titles" on public.titles for all to authenticated
+using (public.is_admin()) with check (public.is_admin());
 
--- IMPORTANT: Create the first admin securely after signing up:
--- update public.profiles set role = 'admin' where id = '<auth-user-uuid>';
--- Run that statement manually in the SQL editor as project owner. Never expose service_role keys in clients.
+drop policy if exists "Published seasons readable" on public.seasons;
+create policy "Published seasons readable" on public.seasons for select
+using (public.is_admin() or exists(
+  select 1 from public.titles t where t.id = title_id and t.status = 'published'
+));
+
+drop policy if exists "Admins manage seasons" on public.seasons;
+create policy "Admins manage seasons" on public.seasons for all to authenticated
+using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Published episodes readable" on public.episodes;
+create policy "Published episodes readable" on public.episodes for select
+using (public.is_admin() or (status = 'published' and exists(
+  select 1 from public.seasons s join public.titles t on t.id = s.title_id
+  where s.id = season_id and t.status = 'published'
+)));
+
+drop policy if exists "Admins manage episodes" on public.episodes;
+create policy "Admins manage episodes" on public.episodes for all to authenticated
+using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "Users manage own watchlist" on public.watchlist;
+create policy "Users manage own watchlist" on public.watchlist for all to authenticated
+using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+drop policy if exists "Users manage own progress" on public.watch_progress;
+create policy "Users manage own progress" on public.watch_progress for all to authenticated
+using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+-- After signing up to the app, promote the first trusted owner account:
+-- update public.profiles set role = 'admin' where id = '<AUTH_USER_UUID>';
+-- Run that one statement manually as the project owner. Never expose service_role keys.
