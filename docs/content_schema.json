@@ -1,0 +1,44 @@
+{
+  "title": {
+    "id": "string",
+    "slug": "string",
+    "title": "string",
+    "synopsis": "string",
+    "content_type": "movie | series",
+    "original_language": "string",
+    "available_audio_languages": ["string"],
+    "available_subtitle_languages": ["string"],
+    "genres": ["string"],
+    "release_year": 2026,
+    "maturity_rating": "U | UA 7+ | UA 13+ | UA 16+ | A",
+    "poster_url": "https://example.invalid/poster.jpg",
+    "backdrop_url": "https://example.invalid/backdrop.jpg",
+    "trailer_url": null,
+    "status": "draft | published | archived",
+    "duration_seconds": null,
+    "seasons": []
+  },
+  "season": {
+    "id": "string",
+    "season_number": 1,
+    "title": "Season 1",
+    "episodes": []
+  },
+  "episode": {
+    "id": "string",
+    "episode_number": 1,
+    "title": "Episode title",
+    "synopsis": "string",
+    "duration_seconds": 1800,
+    "playback_asset_id": "server-side-reference-only",
+    "status": "draft | published"
+  },
+  "user_watch_progress": {
+    "user_id": "string",
+    "title_id": "string",
+    "episode_id": null,
+    "position_seconds": 0,
+    "duration_seconds": 0,
+    "updated_at": "ISO-8601"
+  }
+}
