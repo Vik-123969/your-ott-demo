@@ -29,7 +29,10 @@ jobs:
       - name: Upload admin site
         uses: actions/upload-pages-artifact@v3
         with:
+          name: your-ott-admin-site
           path: admin
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: your-ott-admin-site
