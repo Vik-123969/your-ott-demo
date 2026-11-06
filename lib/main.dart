@@ -46,7 +46,6 @@ class _HomePageState extends State<HomePage> {
   int tab = 0;
   String query = '';
   final Set<String> saved = {};
-  final pages = const ['Home', 'Movies', 'Series', 'My List', 'Profile'];
 
   @override
   Widget build(BuildContext context) {
