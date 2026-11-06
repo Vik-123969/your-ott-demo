@@ -21,7 +21,7 @@
    <button id="saveConfig" class="btn">Save connection settings</button>
    <div class="notice">Use only your project's public anon/publishable key. Never enter a service_role or secret key here.</div>
   </div>
-  <div id="loginArea" class="hidden">
+  <div id="recoveryArea" class="hidden">\n   <h2 style="font-size:19px;margin:18px 0 6px">Set a new password</h2><p>Choose a new password for your Your OTT admin account.</p>\n   <div class="formfield"><label>New password</label><input id="newPassword" type="password" class="field" minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></div>\n   <div class="formfield"><label>Confirm new password</label><input id="confirmPassword" type="password" class="field" minlength="8" autocomplete="new-password" placeholder="Enter it again"></div>\n   <button id="saveNewPassword" class="btn primary">Update password</button>\n  </div>\n  <div id="loginArea" class="hidden">
    <div class="formfield"><label>Admin email</label><input id="email" type="email" class="field" placeholder="you@example.com" autocomplete="username"></div>
    <div class="formfield"><label>Password</label><input id="password" type="password" class="field" placeholder="Your password" autocomplete="current-password"></div>
    <button id="signIn" class="btn primary">Sign in securely</button>
@@ -84,7 +84,7 @@
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const $=id=>document.getElementById(id);
-let supabase=null, session=null, rows=[];
+let supabase=null, session=null, rows=[], recoveryMode=false;
 const saved=()=>{try{return JSON.parse(localStorage.getItem('yourott_supabase')||'null')}catch{return null}};
 function showError(msg){$('loginError').textContent=msg||''}
 function toast(msg){$('toast').textContent=msg;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2800)}
@@ -93,8 +93,9 @@ function slugify(v){return v.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').rep
 function connectConfig(){const c=saved();if(c){$('projectUrl').value=c.url;$('anonKey').value=c.key;$('configArea').classList.add('hidden');$('loginArea').classList.remove('hidden')}}
 $('saveConfig').onclick=()=>{const url=$('projectUrl').value.trim().replace(/\/$/,'');const key=$('anonKey').value.trim();if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)||!key){showError('Enter a valid Supabase Project URL and public anon/publishable key.');return}localStorage.setItem('yourott_supabase',JSON.stringify({url,key}));showError('');connectConfig();toast('Connection settings saved in this browser.')};
 $('editConfig').onclick=()=>{$('configArea').classList.remove('hidden');$('loginArea').classList.add('hidden');showError('')};
-async function init(){const c=saved();if(!c){$('login').classList.remove('hidden');return}supabase=createClient(c.url,c.key);$('connectedUrl').textContent=c.url;const {data:{session:s}}=await supabase.auth.getSession();if(s){session=s;await enterApp()}else{$('login').classList.remove('hidden');connectConfig()}}
-$('signIn').onclick=async()=>{showError('');const c=saved();if(!c){showError('Save your Supabase connection settings first.');return}supabase=createClient(c.url,c.key);const {data,error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error){showError(error.message);return}session=data.session;await enterApp()};
+function showRecovery(){recoveryMode=true;$('login').classList.remove('hidden');$('configArea').classList.add('hidden');$('loginArea').classList.add('hidden');$('recoveryArea').classList.remove('hidden');$('loginError').textContent='';}
+async function init(){const c=saved();if(!c){$('login').classList.remove('hidden');return}supabase=createClient(c.url,c.key);$('connectedUrl').textContent=c.url;supabase.auth.onAuthStateChange(async(event,newSession)=>{if(event==='PASSWORD_RECOVERY'){session=newSession;showRecovery()}});const {data:{session:s}}=await supabase.auth.getSession();if(s&&!recoveryMode){session=s;await enterApp()}else if(!recoveryMode){$('login').classList.remove('hidden');connectConfig()}}
+$('saveNewPassword').onclick=async()=>{showError('');const password=$('newPassword').value,confirmPassword=$('confirmPassword').value;if(password.length<8){showError('Password must be at least 8 characters.');return}if(password!==confirmPassword){showError('The passwords do not match.');return}const {error}=await supabase.auth.updateUser({password});if(error){showError(error.message);return}recoveryMode=false;$('recoveryArea').classList.add('hidden');$('loginArea').classList.remove('hidden');$('password').value=password;showError('Password updated. You can now sign in.');};\n$('signIn').onclick=async()=>{showError('');const c=saved();if(!c){showError('Save your Supabase connection settings first.');return}supabase=createClient(c.url,c.key);const {data,error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error){showError(error.message);return}session=data.session;await enterApp()};
 async function enterApp(){const {data:profile,error}=await supabase.from('profiles').select('role,display_name').eq('id',session.user.id).single();if(error||profile?.role!=='admin'){await supabase.auth.signOut();session=null;showError('This account does not have admin access. Ask the project owner to verify its admin role.');return}
 $('login').classList.add('hidden');$('app').classList.remove('hidden');$('adminEmail').textContent=session.user.email;$('settingsEmail').textContent=session.user.email;$('avatar').textContent=(session.user.email||'A').slice(0,1).toUpperCase();await loadTitles()}
 $('logout').onclick=async()=>{await supabase.auth.signOut();session=null;$('app').classList.add('hidden');$('login').classList.remove('hidden');showError('You have signed out.')};
