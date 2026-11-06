@@ -25,7 +25,7 @@ jobs:
           channel: stable
           cache: true
       - name: Generate Android platform files
-        run: flutter create --platforms=android --org in.yourott.app --project-name your_ott .
+        run: flutter create --platforms=android --org com.yourott --project-name app .
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze Flutter project
