@@ -1,14 +1,16 @@
 name: your_ott
-description: Your OTT Android demo app
+description: Your OTT mobile streaming app
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.7.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
+  supabase_flutter: ^2.14.2
+  video_player: ^2.10.1
 
 dev_dependencies:
   flutter_test:
