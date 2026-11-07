@@ -157,3 +157,13 @@ using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))
 -- After signing up to the app, promote the first trusted owner account:
 -- update public.profiles set role = 'admin' where id = '<AUTH_USER_UUID>';
 -- Run that one statement manually as the project owner. Never expose service_role keys.
+-- Explicit Data API grants. RLS policies above continue to restrict rows.
+grant usage on schema public to anon, authenticated;
+grant select on table public.profiles to authenticated;
+grant select on table public.titles to anon, authenticated;
+grant insert, update, delete on table public.titles to authenticated;
+grant select, insert, update, delete on table public.seasons to authenticated;
+grant select, insert, update, delete on table public.episodes to authenticated;
+grant select, insert, update, delete on table public.watchlist to authenticated;
+grant select, insert, update, delete on table public.watch_progress to authenticated;
+grant execute on function public.is_admin() to authenticated;
