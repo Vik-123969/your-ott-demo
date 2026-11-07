@@ -26,6 +26,20 @@ jobs:
           cache: true
       - name: Generate Android platform files
         run: flutter create --platforms=android --org com.yourott --project-name app .
+      - name: Ensure Android release internet permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text()
+          permission = '    <uses-permission android:name="android.permission.INTERNET" />'
+          if "android.permission.INTERNET" not in content:
+              content = content.replace("<application", permission + "\\n    <application", 1)
+              manifest.write_text(content)
+          if "android.permission.INTERNET" not in manifest.read_text():
+              raise SystemExit("INTERNET permission was not added to the release manifest")
+          print("Verified: release manifest contains android.permission.INTERNET")
+          PY
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze Flutter project
