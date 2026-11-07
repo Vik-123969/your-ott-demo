@@ -26,11 +26,29 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Prepare Pages site
+        run: |
+          mkdir -p _site
+          cp -R admin _site/admin
+          cat > _site/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <meta http-equiv="refresh" content="0; url=./admin/">
+            <title>Your OTT Admin Studio</title>
+          </head>
+          <body>
+            <p>Opening <a href="./admin/">Your OTT Admin Studio</a>…</p>
+          </body>
+          </html>
+          EOF
       - name: Upload admin site
         uses: actions/upload-pages-artifact@v3
         with:
           name: your-ott-admin-site-${{ github.run_id }}-${{ github.run_attempt }}
-          path: admin
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
