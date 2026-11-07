@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 
-const supabaseUrl = 'https://sbyzeeipaeyrlicigxo.supabase.co';
+const supabaseUrl = 'https://sbyzeeipaieyrlicigxo.supabase.co';
 const supabasePublishableKey = 'sb_publishable_NFLGfa4faqKZUHErtWJXw_Vku8Pa0v';
 const videoBucket = 'ott-videos';
 const bg = Color(0xFF090B12);
