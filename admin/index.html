@@ -119,7 +119,6 @@
 <div id="toast" class="toast hidden"></div>
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { Upload as TusUpload } from 'https://esm.sh/tus-js-client@4';
 const $=id=>document.getElementById(id);
 let supabase=null, session=null, rows=[], recoveryMode=false;
 const saved=()=>{try{return JSON.parse(localStorage.getItem('yourott_supabase')||'null')}catch{return null}};
@@ -181,25 +180,29 @@ $('uploadEpisodeVideo').onclick=async()=>{
  const c=saved();if(!c||!session?.access_token){setVideoStatus('Your admin session is not available. Sign in again.',true);return}
  const ext=file.type==='video/webm'?'webm':'mp4';
  const path=activeSeries.id+'/season-'+activeSeason.season_number+'/episode-'+episodeNumber+'-'+Date.now()+'-'+safeVideoName(file.name).replace(/\.[^.]+$/,'')+'.'+ext;
- const projectRef=getVideoProjectRef();
- const endpoint='https://'+projectRef+'.storage.supabase.co/storage/v1/upload/resumable';
- $('uploadEpisodeVideo').disabled=true;$('previewEpisodeVideo').disabled=true;$('videoUploadProgress').value=0;
- setVideoStatus('Uploading… 0%');
+ $('uploadEpisodeVideo').disabled=true;$('previewEpisodeVideo').disabled=true;$('videoUploadProgress').value=5;
+ setVideoStatus('Uploading… this may take a little while.');
  try{
-  const upload=new TusUpload(file,{
-   endpoint,
-   retryDelays:[0,3000,5000,10000,20000],
-   chunkSize:6*1024*1024,
-   headers:{authorization:'Bearer '+session.access_token,apikey:c.key,'x-upsert':'false'},
-   metadata:{bucketName:VIDEO_BUCKET,objectName:path,contentType:file.type,cacheControl:'3600'},
-   onError:error=>{setVideoStatus('Upload failed: '+(error?.message||String(error)),true);$('uploadEpisodeVideo').disabled=false},
-   onProgress:(sent,total)=>{const pct=Math.round(sent/total*100);$('videoUploadProgress').value=pct;setVideoStatus('Uploading… '+pct+'%')},
-   onSuccess:()=>{$('episodeAsset').value=path;$('previewEpisodeVideo').disabled=false;$('uploadEpisodeVideo').disabled=false;setVideoStatus('Upload complete. Save the episode to attach this video.')}
+  // Native Supabase browser upload accepts File/Blob objects directly.
+  const {data,error}=await supabase.storage.from(VIDEO_BUCKET).upload(path,file,{
+   cacheControl:'3600',
+   upsert:false,
+   contentType:file.type
   });
-  upload.start();
- }catch(error){$('uploadEpisodeVideo').disabled=false;setVideoStatus('Upload could not start: '+error.message,true)}
-};
-let activeSeries=null,activeSeason=null,seasonRows=[],episodeRows=[];
+  if(error)throw error;
+  $('episodeAsset').value=data.path;
+  $('videoUploadProgress').value=100;
+  $('previewEpisodeVideo').disabled=false;
+  setVideoStatus('Upload complete. Save the episode to attach this video.');
+  toast('Episode video uploaded successfully.');
+ }catch(error){
+  $('videoUploadProgress').value=0;
+  const message=error?.message||String(error);
+  setVideoStatus('Upload failed: '+message,true);
+ }finally{
+  $('uploadEpisodeVideo').disabled=false;
+ }
+};let activeSeries=null,activeSeason=null,seasonRows=[],episodeRows=[];
 async function openSeriesManager(id){activeSeries=rows.find(r=>r.id===id);activeSeason=null;if(!activeSeries||activeSeries.content_type!=='series')return;$('seriesManagerTitle').textContent=activeSeries.title;$('seasonError').textContent='';$('episodeError').textContent='';$('episodeArea').classList.add('hidden');$('seriesManagerBack').classList.remove('hidden');$('seasonNumber').value='';$('seasonName').value='';await loadSeasons()}
 async function loadSeasons(){if(!activeSeries)return;const {data,error}=await supabase.from('seasons').select('*').eq('title_id',activeSeries.id).order('season_number',{ascending:true});if(error){$('seasonList').innerHTML='<div class="empty">Could not load seasons: '+escapeHtml(error.message)+'</div>';return}seasonRows=data||[];renderSeasons()}
 function renderSeasons(){$('seasonList').innerHTML=seasonRows.length?seasonRows.map(r=>'<div class="seasonitem"><div class="seasonmeta"><strong>Season '+r.season_number+(r.title?' — '+escapeHtml(r.title):'')+'</strong><small>Season ID: '+r.id+'</small></div><div class="actions"><button class="btn small" data-open-season="'+r.id+'">Manage episodes</button><button class="btn small danger" data-delete-season="'+r.id+'">Delete</button></div></div>').join(''):'<div class="empty">No seasons yet. Add Season 1 to get started.</div>';document.querySelectorAll('[data-open-season]').forEach(b=>b.onclick=()=>openSeason(b.dataset.openSeason));document.querySelectorAll('[data-delete-season]').forEach(b=>b.onclick=()=>deleteSeason(b.dataset.deleteSeason))}
