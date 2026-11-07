@@ -9,6 +9,11 @@ create index if not exists titles_playback_asset_ref_idx
   on public.titles(playback_asset_ref)
   where playback_asset_ref is not null;
 
+-- Published catalogue metadata is readable without an account; RLS still
+-- restricts these queries to published seasons/episodes (or admins).
+grant select on table public.seasons to anon, authenticated;
+grant select on table public.episodes to anon, authenticated;
+
 -- 2) Subscription records. Payments are not connected yet; an admin will
 -- activate a test/customer subscription until a payment provider is added.
 create table if not exists public.subscriptions (
