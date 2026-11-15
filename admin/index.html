@@ -42,6 +42,7 @@
   <div><div class="navlabel">WORKSPACE</div><nav class="nav">
    <button class="active" data-page="dashboard"><span class="ico">◫</span><span>Dashboard</span></button>
    <button data-page="catalogue"><span class="ico">▣</span><span>Movies & Series</span></button>
+   <button data-page="subscriptions"><span class="ico">◷</span><span>Subscriptions</span></button>
    <button data-page="settings"><span class="ico">⚙</span><span>Settings</span></button>
   </nav></div>
   <div class="sidefoot">YOUR OTT · PRIVATE ADMIN</div>
@@ -63,6 +64,24 @@
     <div class="heading"><div><div class="eyebrow">CONTENT LIBRARY</div><h2>Movies & Series</h2><p>Add, edit and publish licensed content in your catalogue.</p></div><button class="btn primary" id="addTitle">＋ Add new title</button></div>
     <div class="panel"><div class="panelhead"><h3>All titles</h3><div class="tools"><input id="searchTitles" class="field search" placeholder="Search title or language…"><select id="typeFilter"><option value="">All types</option><option value="movie">Movies</option><option value="series">Series</option></select><select id="statusFilter"><option value="">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></div></div>
      <div class="tablewrap"><table><thead><tr><th>Title</th><th>Type</th><th>Language</th><th>Year</th><th>Status</th><th>Actions</th></tr></thead><tbody id="titleRows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody></table></div>
+    </div>
+   </section>
+   <section id="subscriptionsPage" class="hidden">
+    <div class="heading"><div><div class="eyebrow">CUSTOMER BILLING</div><h2>Subscriptions</h2><p>Activate, extend or cancel customer access. Payments are not collected here yet.</p></div><button class="btn" id="refreshSubscriptions">↻ Refresh</button></div>
+    <div class="panel">
+     <div class="panelhead"><h3>Activate a test or manually paid plan</h3></div>
+     <form id="subscriptionForm" class="formgrid">
+      <div class="formfield full"><label>Customer account *</label><select id="subscriptionCustomer" required><option value="">Loading customers…</option></select><div class="helptext">Customers are selected by profile name and account ID. This manual tool does not verify a payment.</div></div>
+      <div class="formfield"><label>Plan *</label><select id="subscriptionPlan" required><option value="Monthly">Monthly</option><option value="Quarterly">Quarterly</option><option value="Yearly">Yearly</option><option value="Lifetime">Lifetime (no expiry)</option></select></div>
+      <div class="formfield"><label>Duration (days, custom)</label><input id="subscriptionDays" class="field" type="number" min="1" max="3650" placeholder="30"></div>
+      <div class="formfield full"><button class="btn primary" id="activateSubscription" type="submit">Activate subscription</button></div>
+     </form>
+     <div id="subscriptionFormError" class="error"></div>
+    </div>
+    <div class="panel">
+     <div class="panelhead"><h3>Customer subscriptions</h3><input id="searchSubscriptions" class="field search" placeholder="Search customer or plan…"></div>
+     <div class="tablewrap"><table><thead><tr><th>Customer</th><th>Plan</th><th>Status</th><th>Starts</th><th>Expires</th><th>Actions</th></tr></thead><tbody id="subscriptionRows"><tr><td colspan="6" class="empty">Loading subscriptions…</td></tr></tbody></table></div>
+     <div class="helptext" style="margin-top:12px">This is manual admin activation only. Do not mark an unpaid order as active. Payment gateway integration is a separate next step.</div>
     </div>
    </section>
    <section id="settingsPage" class="hidden">
@@ -136,8 +155,61 @@ $('signIn').onclick=async()=>{showError('');const c=saved();if(!c){showError('Sa
 async function enterApp(){const {data:profile,error}=await supabase.from('profiles').select('role,display_name').eq('id',session.user.id).maybeSingle();if(error){await supabase.auth.signOut();session=null;showError('Admin profile check failed ('+(error.code||'no code')+'): '+error.message);return}if(!profile){await supabase.auth.signOut();session=null;showError('No profile row was found for this signed-in user. Check that public.profiles.id matches auth.users.id.');return}if(profile.role!=='admin'){await supabase.auth.signOut();session=null;showError('Signed in, but this profile role is "'+profile.role+'", not "admin".');return}
 $('login').classList.add('hidden');$('app').classList.remove('hidden');$('adminEmail').textContent=session.user.email;$('settingsEmail').textContent=session.user.email;$('avatar').textContent=(session.user.email||'A').slice(0,1).toUpperCase();await loadTitles()}
 $('logout').onclick=async()=>{await supabase.auth.signOut();session=null;$('app').classList.add('hidden');$('login').classList.remove('hidden');showError('You have signed out.')};
-function page(name){['dashboard','catalogue','settings'].forEach(p=>$(p+'Page').classList.toggle('hidden',p!==name));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('topTitle').textContent=name==='catalogue'?'Movies & Series':name[0].toUpperCase()+name.slice(1)}
+function page(name){['dashboard','catalogue','subscriptions','settings'].forEach(p=>$(p+'Page').classList.toggle('hidden',p!==name));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('topTitle').textContent=name==='catalogue'?'Movies & Series':name[0].toUpperCase()+name.slice(1);if(name==='subscriptions')loadSubscriptions()}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));$('viewAll').onclick=()=>page('catalogue');
+let subscriptionProfiles=[],subscriptionRecords=[];
+function dateLabel(value){if(!value)return 'No expiry';const d=new Date(value);return Number.isNaN(d.getTime())?'—':d.toLocaleDateString()}
+async function loadSubscriptions(){
+ $('subscriptionRows').innerHTML='<tr><td colspan="6" class="empty">Loading subscriptions…</td></tr>';
+ $('subscriptionCustomer').innerHTML='<option value="">Loading customers…</option>';
+ const [profilesResult,subsResult]=await Promise.all([
+  supabase.from('profiles').select('id,display_name,role').eq('role','viewer').order('display_name',{ascending:true}),
+  supabase.from('subscriptions').select('*').order('created_at',{ascending:false}).limit(500)
+ ]);
+ if(profilesResult.error){$('subscriptionFormError').textContent='Could not load customer profiles: '+profilesResult.error.message;$('subscriptionCustomer').innerHTML='<option value="">Customer list unavailable</option>';subscriptionProfiles=[]}
+ else{
+  subscriptionProfiles=profilesResult.data||[];
+  $('subscriptionCustomer').innerHTML='<option value="">Select a customer…</option>'+subscriptionProfiles.map(p=>'<option value="'+escapeHtml(p.id)+'">'+escapeHtml(p.display_name||'Unnamed customer')+' · '+escapeHtml(p.id)+'</option>').join('');
+  if(!subscriptionProfiles.length)$('subscriptionCustomer').innerHTML='<option value="">No viewer profiles found</option>';
+ }
+ if(subsResult.error){$('subscriptionRows').innerHTML='<tr><td colspan="6" class="empty">Could not load subscriptions: '+escapeHtml(subsResult.error.message)+'</td></tr>';subscriptionRecords=[];return}
+ subscriptionRecords=subsResult.data||[];renderSubscriptions();
+}
+function renderSubscriptions(){
+ const q=$('searchSubscriptions').value.trim().toLowerCase();
+ const profileMap=new Map(subscriptionProfiles.map(p=>[p.id,p]));
+ const list=subscriptionRecords.filter(s=>{const p=profileMap.get(s.user_id);return !q||((p?.display_name||'').toLowerCase().includes(q)||s.plan_name.toLowerCase().includes(q)||s.user_id.toLowerCase().includes(q))});
+ $('subscriptionRows').innerHTML=list.length?list.map(s=>{
+  const p=profileMap.get(s.user_id),name=p?.display_name||'Customer account';
+  const expired=s.ends_at&&new Date(s.ends_at)<=new Date();
+  const status=expired&&s.status==='active'?'expired':s.status;
+  return '<tr><td><strong>'+escapeHtml(name)+'</strong><div class="helptext">'+escapeHtml(s.user_id)+'</div></td><td>'+escapeHtml(s.plan_name)+'</td><td><span class="pill '+(status==='active'?'published':status==='expired'?'draft':'')+'">'+escapeHtml(status)+'</span></td><td>'+dateLabel(s.starts_at)+'</td><td>'+dateLabel(s.ends_at)+'</td><td><div class="actions">'+(s.status==='active'?'<button class="btn small danger" data-cancel-sub="'+s.id+'">Cancel</button>':'<button class="btn small" data-reactivate-sub="'+s.id+'">Reactivate</button>')+'</div></td></tr>';
+ }).join(''):'<tr><td colspan="6" class="empty">No subscriptions found.</td></tr>';
+ document.querySelectorAll('[data-cancel-sub]').forEach(b=>b.onclick=()=>changeSubscriptionStatus(b.dataset.cancelSub,'cancelled'));
+ document.querySelectorAll('[data-reactivate-sub]').forEach(b=>b.onclick=()=>changeSubscriptionStatus(b.dataset.reactivateSub,'active'));
+}
+async function changeSubscriptionStatus(id,status){
+ const record=subscriptionRecords.find(x=>x.id===id);if(!record)return;
+ if(!confirm(status==='cancelled'?'Cancel this subscription?':'Reactivate this subscription?'))return;
+ const patch={status,updated_at:new Date().toISOString()};
+ if(status==='active'){patch.starts_at=new Date().toISOString();if(record.plan_name==='Lifetime')patch.ends_at=null;else if(!record.ends_at||new Date(record.ends_at)<=new Date()){const days=record.plan_name==='Yearly'?365:record.plan_name==='Quarterly'?90:30;patch.ends_at=new Date(Date.now()+days*86400000).toISOString()}}
+ const {error}=await supabase.from('subscriptions').update(patch).eq('id',id);
+ if(error){toast('Subscription update failed: '+error.message);return}toast('Subscription updated.');await loadSubscriptions();
+}
+$('subscriptionForm').onsubmit=async e=>{
+ e.preventDefault();$('subscriptionFormError').textContent='';
+ const userId=$('subscriptionCustomer').value,plan=$('subscriptionPlan').value;
+ if(!userId){$('subscriptionFormError').textContent='Select a customer first.';return}
+ const customDays=$('subscriptionDays').value?Number($('subscriptionDays').value):null;
+ if(customDays!==null&&(!Number.isInteger(customDays)||customDays<1||customDays>3650)){$('subscriptionFormError').textContent='Enter a duration from 1 to 3650 days.';return}
+ const days=plan==='Lifetime'?null:customDays||(plan==='Yearly'?365:plan==='Quarterly'?90:30);
+ const now=new Date(),ends=days?new Date(now.getTime()+days*86400000).toISOString():null;
+ const {error}=await supabase.from('subscriptions').insert({user_id:userId,plan_name:plan,status:'active',starts_at:now.toISOString(),ends_at:ends});
+ if(error){$('subscriptionFormError').textContent='Activation failed: '+error.message;return}
+ $('subscriptionDays').value='';$('subscriptionCustomer').value='';toast('Subscription activated manually.');await loadSubscriptions();
+};
+$('refreshSubscriptions').onclick=loadSubscriptions;
+$('searchSubscriptions').addEventListener('input',renderSubscriptions);
 async function loadTitles(){const {data,error}=await supabase.from('titles').select('*').order('updated_at',{ascending:false}).limit(500);if(error){toast('Could not load titles: '+error.message);return}rows=data||[];renderStats();renderRows()}
 function renderStats(){$('totalCount').textContent=rows.length;$('publishedCount').textContent=rows.filter(x=>x.status==='published').length;$('draftCount').textContent=rows.filter(x=>x.status==='draft').length;$('seriesCount').textContent=rows.filter(x=>x.content_type==='series').length;const recent=rows.slice(0,5);$('recentList').innerHTML=recent.length?'<div class="tablewrap"><table><thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Year</th></tr></thead><tbody>'+recent.map(r=>'<tr><td>'+escapeHtml(r.title)+'</td><td>'+escapeHtml(r.content_type)+'</td><td><span class="pill '+escapeHtml(r.status)+'">'+escapeHtml(r.status)+'</span></td><td>'+(r.release_year||'—')+'</td></tr>').join('')+'</tbody></table></div>':'No titles yet. Add your first licensed title to get started.'}
 function renderRows(){
