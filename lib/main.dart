@@ -925,6 +925,35 @@ class PaymentPlansSheet extends StatefulWidget {
 class _PaymentPlansSheetState extends State<PaymentPlansSheet> {
   String selectedPlan = 'Monthly';
   String selectedMethod = 'UPI';
+  bool pricesLoading = true;
+  Map<String, int> prices = const {'Monthly': 99, 'Quarterly': 249, 'Half-Yearly': 449, 'Yearly': 799};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrices();
+  }
+
+  Future<void> _loadPrices() async {
+    try {
+      final row = await supabase.from('app_settings').select('value')
+          .eq('key', 'subscription_prices').maybeSingle();
+      final value = row?['value'];
+      if (value is Map) {
+        final updated = <String, int>{};
+        for (final key in ['Monthly', 'Quarterly', 'Half-Yearly', 'Yearly']) {
+          final amount = value[key];
+          updated[key] = amount is num ? amount.round() : prices[key]!;
+        }
+        if (mounted) setState(() { prices = updated; pricesLoading = false; });
+        return;
+      }
+    } catch (_) {
+      // Keep safe default prices if settings are temporarily unavailable.
+    }
+    if (mounted) setState(() => pricesLoading = false);
+  }
+
   final plans = const [
     ('Monthly', '30 days'),
     ('Quarterly', '90 days'),
@@ -983,7 +1012,7 @@ class _PaymentPlansSheetState extends State<PaymentPlansSheet> {
               child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Icon(Icons.info_outline, color: accent),
                 SizedBox(width: 9),
-                Expanded(child: Text('Payment gateway is not connected yet. Prices are not configured. This is a preview only; no money will be charged and selecting an option will not activate a subscription.', style: TextStyle(color: Colors.white70, fontSize: 12))),
+                Expanded(child: Text(pricesLoading ? 'Loading current plan prices…' : 'Prices shown above are set by Your OTT admin. Payment gateway is not connected yet; no money will be charged and selecting an option will not activate a subscription.', style: TextStyle(color: Colors.white70, fontSize: 12))),
               ]),
             ),
             const SizedBox(height: 14),
@@ -991,7 +1020,7 @@ class _PaymentPlansSheetState extends State<PaymentPlansSheet> {
               width: double.infinity,
               child: FilledButton(
                 onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Payment will be enabled after gateway setup and plan pricing.')),
+                  const SnackBar(content: Text('Payment will be enabled after the payment gateway is connected.')),
                 ),
                 child: const Text('Continue (coming soon)'),
               ),
