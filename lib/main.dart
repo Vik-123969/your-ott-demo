@@ -440,6 +440,16 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openPlans() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => const PaymentPlansSheet(),
+    );
+  }
+
   Widget _profileTab() => ListView(padding: const EdgeInsets.all(18), children: [
         const Text('Your Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
@@ -448,8 +458,19 @@ class _HomePageState extends State<HomePage> {
         AuthPanel(onChanged: _refresh),
         const SizedBox(height: 14),
         _subscriptionStatusCard(),
+        const SizedBox(height: 12),
+        Card(
+          color: panel,
+          child: ListTile(
+            leading: const Icon(Icons.workspace_premium_outlined, color: accent, size: 30),
+            title: const Text('Explore Premium Plans', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('UPI, cards, net banking, wallets and bank transfer options', style: TextStyle(color: muted, fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _openPlans,
+          ),
+        ),
         const SizedBox(height: 18),
-        const Text('Premium video playback requires an active subscription. Payments are not connected yet; plans are currently activated manually by the Your OTT admin.',
+        const Text('Payment gateway will be connected later. No payment is collected in this preview.',
             style: TextStyle(color: muted, fontSize: 12)),
       ]);
 
@@ -888,6 +909,95 @@ class _PlayerPageState extends State<PlayerPage> {
                         ]),
                         const Text('Your OTT Player • HLS / MP4', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11)),
                       ]),
+      ),
+    );
+  }
+}
+
+
+class PaymentPlansSheet extends StatefulWidget {
+  const PaymentPlansSheet({super.key});
+
+  @override
+  State<PaymentPlansSheet> createState() => _PaymentPlansSheetState();
+}
+
+class _PaymentPlansSheetState extends State<PaymentPlansSheet> {
+  String selectedPlan = 'Monthly';
+  String selectedMethod = 'UPI';
+  final plans = const [
+    ('Monthly', '30 days'),
+    ('Quarterly', '90 days'),
+    ('Half-Yearly', '180 days'),
+    ('Yearly', '365 days'),
+  ];
+  final methods = const [
+    ('UPI', 'Google Pay, PhonePe, Paytm, BHIM', Icons.account_balance),
+    ('Debit / Credit Card', 'Visa, Mastercard, RuPay', Icons.credit_card),
+    ('Net Banking', 'Supported Indian banks', Icons.account_balance_outlined),
+    ('Wallets', 'Paytm and other supported wallets', Icons.account_balance_wallet_outlined),
+    ('Bank Transfer', 'Manual bank transfer; admin verification required', Icons.currency_rupee),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              const Expanded(child: Text('Your OTT Premium', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+            ]),
+            const Text('Choose a subscription duration', style: TextStyle(color: muted)),
+            const SizedBox(height: 12),
+            ...plans.map((plan) => RadioListTile<String>(
+              value: plan.$1,
+              groupValue: selectedPlan,
+              activeColor: accent,
+              contentPadding: EdgeInsets.zero,
+              title: Text(plan.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(plan.$2, style: const TextStyle(color: muted)),
+              onChanged: (value) => setState(() => selectedPlan = value!),
+            )),
+            const Divider(color: Color(0xFF30394D)),
+            const SizedBox(height: 8),
+            const Text('Select payment method', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            ...methods.map((method) => RadioListTile<String>(
+              value: method.$1,
+              groupValue: selectedMethod,
+              activeColor: accent,
+              contentPadding: EdgeInsets.zero,
+              secondary: Icon(method.$3, color: accent),
+              title: Text(method.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(method.$2, style: const TextStyle(color: muted, fontSize: 11)),
+              onChanged: (value) => setState(() => selectedMethod = value!),
+            )),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(color: const Color(0xFF28213D), borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withValues(alpha: .45))),
+              child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.info_outline, color: accent),
+                SizedBox(width: 9),
+                Expanded(child: Text('Payment gateway is not connected yet. Prices are not configured. This is a preview only; no money will be charged and selecting an option will not activate a subscription.', style: TextStyle(color: Colors.white70, fontSize: 12))),
+              ]),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Payment will be enabled after gateway setup and plan pricing.')),
+                ),
+                child: const Text('Continue (coming soon)'),
+              ),
+            ),
+          ]),
+        ),
       ),
     );
   }
