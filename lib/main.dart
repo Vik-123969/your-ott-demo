@@ -588,7 +588,7 @@ class _AuthPanelState extends State<AuthPanel> {
     }
     setState(() { busy = true; message = null; });
     try {
-      await supabase.auth.resetPasswordForEmail(address);
+      await supabase.auth.resetPasswordForEmail(address, redirectTo: 'https://vik-123969.github.io/your-ott-demo/reset-password.html');
       _show('Password reset email bhej diya gaya hai. Inbox aur Spam folder check karein. Email link se naya password set karein.');
     } on AuthException catch (e) {
       _show(e.message, error: true);
