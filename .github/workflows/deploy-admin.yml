@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'admin/**'
+      - 'reset-password.html'
       - '.github/workflows/deploy-admin.yml'
   workflow_dispatch:
 permissions:
@@ -30,6 +31,7 @@ jobs:
         run: |
           mkdir -p _site
           cp -R admin _site/admin
+          cp reset-password.html _site/reset-password.html
           cat > _site/index.html <<'EOF'
           <!doctype html>
           <html lang="en">
