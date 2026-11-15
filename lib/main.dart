@@ -527,6 +527,7 @@ class _AuthPanelState extends State<AuthPanel> {
   final email = TextEditingController();
   final password = TextEditingController();
   bool createMode = false;
+  bool passwordVisible = false;
   bool busy = false;
   String? message;
   bool hasError = false;
@@ -570,6 +571,25 @@ class _AuthPanelState extends State<AuthPanel> {
         _show('Signed in successfully.');
       }
       await widget.onChanged();
+    } on AuthException catch (e) {
+      _show(e.message, error: true);
+    } catch (e) {
+      _show(e.toString(), error: true);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final address = email.text.trim();
+    if (!address.contains('@')) {
+      _show('Pehle apna registered email address enter karein.', error: true);
+      return;
+    }
+    setState(() { busy = true; message = null; });
+    try {
+      await supabase.auth.resetPasswordForEmail(address);
+      _show('Password reset email bhej diya gaya hai. Inbox aur Spam folder check karein. Email link se naya password set karein.');
     } on AuthException catch (e) {
       _show(e.message, error: true);
     } catch (e) {
@@ -630,10 +650,25 @@ class _AuthPanelState extends State<AuthPanel> {
         const SizedBox(height: 12),
         TextField(
           controller: password,
-          obscureText: true,
+          obscureText: !passwordVisible,
           autofillHints: [createMode ? AutofillHints.newPassword : AutofillHints.password],
-          decoration: const InputDecoration(labelText: 'Password (at least 8 characters)'),
+          decoration: InputDecoration(
+            labelText: 'Password (at least 8 characters)',
+            suffixIcon: IconButton(
+              tooltip: passwordVisible ? 'Hide password' : 'Show password',
+              icon: Icon(passwordVisible ? Icons.visibility_off : Icons.visibility),
+              onPressed: () => setState(() => passwordVisible = !passwordVisible),
+            ),
+          ),
         ),
+        if (!createMode)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: busy ? null : _resetPassword,
+              child: const Text('Forgot password?'),
+            ),
+          ),
         const SizedBox(height: 14),
         SizedBox(width: double.infinity, child: FilledButton(
           onPressed: busy ? null : _submit,
