@@ -87,6 +87,13 @@
    <section id="settingsPage" class="hidden">
     <div class="heading"><div><div class="eyebrow">PREFERENCES</div><h2>Settings</h2><p>Connection and account information.</p></div></div>
     <div class="panel"><h3>Backend connection</h3><p class="muted">Connected to your Supabase project using its public client key. Database access is controlled by Row Level Security.</p><div class="muted" id="connectedUrl" style="word-break:break-all"></div><button class="btn" id="resetConnection" style="margin-top:16px">Change connection</button></div>
+    <div class="panel"><h3>Subscription plan pricing</h3><p class="muted">Set the prices shown in the Your OTT app. Changes are saved to Supabase and will appear in the app after refresh.</p><form id="pricingForm" class="formgrid">
+     <div class="formfield"><label>Monthly price (₹)</label><input id="priceMonthly" class="field" type="number" min="1" max="100000" step="1" required value="99"></div>
+     <div class="formfield"><label>Quarterly price (₹)</label><input id="priceQuarterly" class="field" type="number" min="1" max="100000" step="1" required value="249"></div>
+     <div class="formfield"><label>Half-Yearly price (₹)</label><input id="priceHalfYearly" class="field" type="number" min="1" max="100000" step="1" required value="449"></div>
+     <div class="formfield"><label>Yearly price (₹)</label><input id="priceYearly" class="field" type="number" min="1" max="100000" step="1" required value="799"></div>
+     <div class="formfield full"><button class="btn primary" id="savePricing" type="submit">Save plan prices</button><div id="pricingError" class="error"></div></div>
+    </form><div class="helptext">Prices are display-only until a payment gateway is connected. Existing subscriptions are not changed.</div></div>
     <div class="panel"><h3>Admin account</h3><p id="settingsEmail" class="muted"></p><span class="pill published">ADMIN VERIFIED</span></div>
    </section>
   </div>
@@ -153,7 +160,7 @@ async function init(){const c=saved();if(!c){$('login').classList.remove('hidden
 $('saveNewPassword').onclick=async()=>{showError('');const password=$('newPassword').value,confirmPassword=$('confirmPassword').value;if(password.length<8){showError('Password must be at least 8 characters.');return}if(password!==confirmPassword){showError('The passwords do not match.');return}const {error}=await supabase.auth.updateUser({password});if(error){showError(error.message);return}recoveryMode=false;$('recoveryArea').classList.add('hidden');$('loginArea').classList.remove('hidden');$('password').value=password;showError('Password updated. You can now sign in.');};
 $('signIn').onclick=async()=>{showError('');const c=saved();if(!c){showError('Save your Supabase connection settings first.');return}supabase=createClient(c.url,c.key);const {data,error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error){showError(error.message);return}session=data.session;await enterApp()};
 async function enterApp(){const {data:profile,error}=await supabase.from('profiles').select('role,display_name').eq('id',session.user.id).maybeSingle();if(error){await supabase.auth.signOut();session=null;showError('Admin profile check failed ('+(error.code||'no code')+'): '+error.message);return}if(!profile){await supabase.auth.signOut();session=null;showError('No profile row was found for this signed-in user. Check that public.profiles.id matches auth.users.id.');return}if(profile.role!=='admin'){await supabase.auth.signOut();session=null;showError('Signed in, but this profile role is "'+profile.role+'", not "admin".');return}
-$('login').classList.add('hidden');$('app').classList.remove('hidden');$('adminEmail').textContent=session.user.email;$('settingsEmail').textContent=session.user.email;$('avatar').textContent=(session.user.email||'A').slice(0,1).toUpperCase();await loadTitles()}
+$('login').classList.add('hidden');$('app').classList.remove('hidden');$('adminEmail').textContent=session.user.email;$('settingsEmail').textContent=session.user.email;$('avatar').textContent=(session.user.email||'A').slice(0,1).toUpperCase();await loadTitles();await loadPricing()}
 $('logout').onclick=async()=>{await supabase.auth.signOut();session=null;$('app').classList.add('hidden');$('login').classList.remove('hidden');showError('You have signed out.')};
 function page(name){['dashboard','catalogue','subscriptions','settings'].forEach(p=>$(p+'Page').classList.toggle('hidden',p!==name));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));$('topTitle').textContent=name==='catalogue'?'Movies & Series':name[0].toUpperCase()+name.slice(1);if(name==='subscriptions')loadSubscriptions()}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));$('viewAll').onclick=()=>page('catalogue');
@@ -288,6 +295,23 @@ $('addEpisode').onclick=()=>openEpisodeForm();$('cancelEpisode').onclick=()=>$('
 $('episodeForm').onsubmit=async e=>{e.preventDefault();$('episodeFormError').textContent='';const id=$('episodeRecordId').value;const number=Number($('episodeNumber').value);const title=$('episodeTitle').value.trim();if(!Number.isInteger(number)||number<1||!title){$('episodeFormError').textContent='Enter a valid episode number and title.';return}const payload={season_id:activeSeason.id,episode_number:number,title,synopsis:$('episodeSynopsis').value.trim(),duration_seconds:$('episodeDuration').value?Number($('episodeDuration').value)*60:null,playback_asset_ref:$('episodeAsset').value.trim()||null,status:$('episodeStatus').value};const previousAsset=id?episodeRows.find(x=>x.id===id)?.playback_asset_ref:null;const {error}=id?await supabase.from('episodes').update(payload).eq('id',id):await supabase.from('episodes').insert(payload);if(error){$('episodeFormError').textContent=error.message;return}if(previousAsset&&previousAsset!==payload.playback_asset_ref&&isBucketPath(previousAsset)){const removed=await supabase.storage.from(VIDEO_BUCKET).remove([previousAsset]);if(removed.error)toast('Episode saved, but previous video cleanup failed: '+removed.error.message)}$('episodeModalBack').classList.add('hidden');toast(id?'Episode updated.':'Episode added.');await loadEpisodes()};
 async function deleteEpisode(id){const r=episodeRows.find(x=>x.id===id);if(!r||!confirm('Delete Episode '+r.episode_number+' — '+r.title+'?'))return;const {error}=await supabase.from('episodes').delete().eq('id',id);if(error){$('episodeError').textContent=error.message;return}if(r.playback_asset_ref&&isBucketPath(r.playback_asset_ref)){const removed=await supabase.storage.from(VIDEO_BUCKET).remove([r.playback_asset_ref]);if(removed.error)toast('Episode deleted, but its video file could not be removed: '+removed.error.message);else toast('Episode and video deleted.')}else toast('Episode deleted.');await loadEpisodes()}
 $('seriesManagerBack').addEventListener('click',e=>{if(e.target===$('seriesManagerBack'))$('closeSeriesManager').click()});$('episodeModalBack').addEventListener('click',e=>{if(e.target===$('episodeModalBack'))$('cancelEpisode').click()});
+let currentPrices={Monthly:99,Quarterly:249,'Half-Yearly':449,Yearly:799};
+async function loadPricing(){
+ const {data,error}=await supabase.from('app_settings').select('value').eq('key','subscription_prices').maybeSingle();
+ if(error){$('pricingError').textContent='Pricing settings could not be loaded. Run migration 004 in Supabase: '+error.message;return}
+ if(data?.value&&typeof data.value==='object')currentPrices={...currentPrices,...data.value};
+ $('priceMonthly').value=currentPrices.Monthly;$('priceQuarterly').value=currentPrices.Quarterly;$('priceHalfYearly').value=currentPrices['Half-Yearly'];$('priceYearly').value=currentPrices.Yearly;
+}
+$('pricingForm').onsubmit=async e=>{
+ e.preventDefault();$('pricingError').textContent='';
+ const values={Monthly:Number($('priceMonthly').value),Quarterly:Number($('priceQuarterly').value),'Half-Yearly':Number($('priceHalfYearly').value),Yearly:Number($('priceYearly').value)};
+ if(Object.values(values).some(v=>!Number.isInteger(v)||v<1||v>100000)){$('pricingError').textContent='Enter whole-number prices between ₹1 and ₹1,00,000.';return}
+ $('savePricing').disabled=true;
+ const {error}=await supabase.from('app_settings').upsert({key:'subscription_prices',value:values,updated_at:new Date().toISOString(),updated_by:session.user.id},{onConflict:'key'});
+ $('savePricing').disabled=false;
+ if(error){$('pricingError').textContent='Could not save prices: '+error.message;return}
+ currentPrices=values;toast('Subscription prices saved. Refresh the app to see them.');
+};
 $('resetConnection').onclick=$('editConfig').onclick; // Settings shortcut is wired below.
 $('resetConnection').onclick=()=>{if(confirm('Clear the saved Supabase connection from this browser?')){localStorage.removeItem('yourott_supabase');location.reload()}};
 init();
