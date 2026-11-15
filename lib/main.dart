@@ -382,14 +382,74 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _subscriptionStatusCard() {
+    final current = supabase.auth.currentUser;
+    if (current == null) {
+      return Card(color: panel, child: const ListTile(
+        leading: Icon(Icons.workspace_premium_outlined, color: accent),
+        title: Text('Subscription'),
+        subtitle: Text('Sign in to view your subscription status.', style: TextStyle(color: muted)),
+      ));
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    final future = supabase.from('subscriptions').select('plan_name, status, starts_at, ends_at')
+        .eq('user_id', current.id).eq('status', 'active')
+        .lte('starts_at', now).order('created_at', ascending: false).limit(20);
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Card(color: panel, child: const ListTile(
+            leading: Icon(Icons.workspace_premium_outlined, color: accent),
+            title: Text('Subscription'),
+            subtitle: Text('Checking your plan…', style: TextStyle(color: muted)),
+          ));
+        }
+        if (snapshot.hasError) {
+          return Card(color: panel, child: ListTile(
+            leading: const Icon(Icons.info_outline, color: accent),
+            title: const Text('Subscription status unavailable'),
+            subtitle: Text(snapshot.error.toString(), style: const TextStyle(color: muted, fontSize: 11)),
+          ));
+        }
+        final records = snapshot.data ?? const <Map<String, dynamic>>[];
+        Map<String, dynamic>? active;
+        for (final record in records) {
+          final endValue = record['ends_at'];
+          if (endValue == null || DateTime.tryParse(endValue.toString())?.isAfter(DateTime.now().toUtc()) == true) {
+            active = record;
+            break;
+          }
+        }
+        if (active == null) {
+          return Card(color: panel, child: const ListTile(
+            leading: Icon(Icons.lock_outline, color: accent),
+            title: Text('Free plan'),
+            subtitle: Text('No active Premium subscription. Contact support or wait for plan activation.', style: TextStyle(color: muted)),
+          ));
+        }
+        final endValue = active['ends_at'];
+        final expiry = endValue == null ? 'No expiry' : DateTime.parse(endValue.toString()).toLocal().toString().split('.').first;
+        return Card(color: panel, child: ListTile(
+          leading: const Icon(Icons.workspace_premium, color: accent, size: 30),
+          title: Text('${active['plan_name']} plan active'),
+          subtitle: Text('Valid until: $expiry', style: const TextStyle(color: muted)),
+          trailing: const Icon(Icons.verified, color: Color(0xFF65E4BA)),
+        ));
+      },
+    );
+  }
+
   Widget _profileTab() => ListView(padding: const EdgeInsets.all(18), children: [
         const Text('Your Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Text(user?.email ?? 'Browsing as guest', style: const TextStyle(color: muted)),
         const SizedBox(height: 17),
         AuthPanel(onChanged: _refresh),
+        const SizedBox(height: 14),
+        _subscriptionStatusCard(),
         const SizedBox(height: 18),
-        const Text('Playback requires an active subscription or an admin account. Payments are not connected yet.',
+        const Text('Premium video playback requires an active subscription. Payments are not connected yet; plans are currently activated manually by the Your OTT admin.',
             style: TextStyle(color: muted, fontSize: 12)),
       ]);
 
