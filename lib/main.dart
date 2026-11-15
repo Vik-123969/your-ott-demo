@@ -445,8 +445,12 @@ class AuthPanel extends StatefulWidget {
 class _AuthPanelState extends State<AuthPanel> {
   final email = TextEditingController();
   final password = TextEditingController();
+  final phone = TextEditingController();
+  final otp = TextEditingController();
   bool createMode = false;
   bool busy = false;
+  bool otpSent = false;
+  String method = 'email';
   String? message;
   bool hasError = false;
 
@@ -454,37 +458,98 @@ class _AuthPanelState extends State<AuthPanel> {
   void dispose() {
     email.dispose();
     password.dispose();
+    phone.dispose();
+    otp.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  void _show(String value, {bool error = false}) {
+    if (!mounted) return;
+    setState(() { message = value; hasError = error; });
+  }
+
+  Future<void> _submitEmail() async {
     if (!email.text.trim().contains('@')) {
-      setState(() { message = 'Enter a valid email address.'; hasError = true; });
+      _show('Enter a valid email address.', error: true);
       return;
     }
     if (password.text.length < 8) {
-      setState(() { message = 'Password must be at least 8 characters.'; hasError = true; });
+      _show('Password must be at least 8 characters.', error: true);
       return;
     }
     setState(() { busy = true; message = null; });
     try {
       if (createMode) {
-        final response = await supabase.auth.signUp(email: email.text.trim(), password: password.text);
-        setState(() {
-          message = response.session == null
-              ? 'Account request sent. Check your email to confirm, then sign in.'
-              : 'Your account was created and signed in.';
-          hasError = false;
-        });
+        final response = await supabase.auth.signUp(
+          email: email.text.trim(),
+          password: password.text,
+        );
+        _show(response.session == null
+            ? 'Account request sent. Check your email to confirm, then sign in.'
+            : 'Your account was created and signed in.');
       } else {
-        await supabase.auth.signInWithPassword(email: email.text.trim(), password: password.text);
-        setState(() { message = 'Signed in successfully.'; hasError = false; });
+        await supabase.auth.signInWithPassword(
+          email: email.text.trim(),
+          password: password.text,
+        );
+        _show('Signed in successfully.');
       }
       await widget.onChanged();
     } on AuthException catch (e) {
-      setState(() { message = e.message; hasError = true; });
+      _show(e.message, error: true);
     } catch (e) {
-      setState(() { message = e.toString(); hasError = true; });
+      _show(e.toString(), error: true);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  String _normalisedPhone() {
+    var value = phone.text.trim().replaceAll(RegExp(r'[\s()-]'), '');
+    if (value.startsWith('0')) value = value.substring(1);
+    if (RegExp(r'^[6-9][0-9]{9}$').hasMatch(value)) value = '+91$value';
+    return value;
+  }
+
+  Future<void> _sendPhoneOtp() async {
+    final number = _normalisedPhone();
+    if (!RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(number)) {
+      _show('Enter a valid phone number with country code, e.g. +919876543210.', error: true);
+      return;
+    }
+    setState(() { busy = true; message = null; });
+    try {
+      await supabase.auth.signInWithOtp(phone: number, shouldCreateUser: true);
+      if (mounted) setState(() { otpSent = true; message = 'OTP sent. Check your SMS inbox.'; hasError = false; });
+    } on AuthException catch (e) {
+      _show(e.message, error: true);
+    } catch (e) {
+      _show(e.toString(), error: true);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _verifyPhoneOtp() async {
+    final number = _normalisedPhone();
+    final code = otp.text.trim();
+    if (code.length < 4) {
+      _show('Enter the OTP received by SMS.', error: true);
+      return;
+    }
+    setState(() { busy = true; message = null; });
+    try {
+      await supabase.auth.verifyOTP(
+        phone: number,
+        token: code,
+        type: OtpType.sms,
+      );
+      _show('Phone verified. You are signed in.');
+      await widget.onChanged();
+    } on AuthException catch (e) {
+      _show(e.message, error: true);
+    } catch (e) {
+      _show(e.toString(), error: true);
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -493,7 +558,7 @@ class _AuthPanelState extends State<AuthPanel> {
   Future<void> _signOut() async {
     await supabase.auth.signOut();
     await widget.onChanged();
-    if (mounted) setState(() { message = 'Signed out.'; hasError = false; });
+    _show('Signed out.');
   }
 
   @override
@@ -507,7 +572,7 @@ class _AuthPanelState extends State<AuthPanel> {
           const SizedBox(height: 10),
           const Text('You are signed in', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 5),
-          Text(current.email ?? current.id, style: const TextStyle(color: muted)),
+          Text(current.email ?? current.phone ?? current.id, style: const TextStyle(color: muted)),
           const SizedBox(height: 14),
           OutlinedButton.icon(onPressed: busy ? null : _signOut, icon: const Icon(Icons.logout), label: const Text('Sign out')),
         ]),
@@ -516,23 +581,74 @@ class _AuthPanelState extends State<AuthPanel> {
     return Card(color: panel, child: Padding(
       padding: const EdgeInsets.all(18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(createMode ? 'Create an account' : 'Sign in', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 14),
-        TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false,
-          decoration: const InputDecoration(labelText: 'Email address')),
+        const Text('Welcome to Your OTT', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        TextField(controller: password, obscureText: true,
-          decoration: const InputDecoration(labelText: 'Password (at least 8 characters)')),
-        const SizedBox(height: 14),
-        SizedBox(width: double.infinity, child: FilledButton(
-          onPressed: busy ? null : _submit,
-          child: Text(busy ? 'Please wait…' : createMode ? 'Create account' : 'Sign in'),
-        )),
-        TextButton(
-          onPressed: busy ? null : () => setState(() { createMode = !createMode; message = null; }),
-          child: Text(createMode ? 'Already registered? Sign in' : 'New to Your OTT? Create an account'),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'phone', label: Text('Mobile + OTP'), icon: Icon(Icons.phone_android)),
+            ButtonSegment(value: 'email', label: Text('Email + Password'), icon: Icon(Icons.email_outlined)),
+          ],
+          selected: {method},
+          onSelectionChanged: busy ? null : (value) => setState(() {
+            method = value.first;
+            message = null;
+            otpSent = false;
+          }),
+          showSelectedIcon: false,
         ),
-        if (message != null) Text(message!, style: TextStyle(fontSize: 12, color: hasError ? const Color(0xFFFF9AA5) : const Color(0xFF65E4BA))),
+        const SizedBox(height: 16),
+        if (method == 'email') ...[
+          Text(createMode ? 'Create an account' : 'Sign in', style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false,
+            decoration: const InputDecoration(labelText: 'Email address')),
+          const SizedBox(height: 12),
+          TextField(controller: password, obscureText: true,
+            decoration: const InputDecoration(labelText: 'Password (at least 8 characters)')),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(
+            onPressed: busy ? null : _submitEmail,
+            child: Text(busy ? 'Please wait…' : createMode ? 'Create account' : 'Sign in'),
+          )),
+          TextButton(
+            onPressed: busy ? null : () => setState(() { createMode = !createMode; message = null; }),
+            child: Text(createMode ? 'Already registered? Sign in' : 'New to Your OTT? Create an account'),
+          ),
+        ] else ...[
+          const Text('Sign in or create account with mobile OTP'),
+          const SizedBox(height: 10),
+          TextField(
+            controller: phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Mobile number',
+              hintText: '+91 9876543210',
+              prefixIcon: Icon(Icons.phone_android),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (otpSent)
+            TextField(
+              controller: otp,
+              keyboardType: TextInputType.number,
+              maxLength: 8,
+              decoration: const InputDecoration(labelText: 'Enter SMS OTP'),
+            ),
+          SizedBox(width: double.infinity, child: FilledButton(
+            onPressed: busy ? null : otpSent ? _verifyPhoneOtp : _sendPhoneOtp,
+            child: Text(busy ? 'Please wait…' : otpSent ? 'Verify OTP' : 'Send OTP'),
+          )),
+          if (otpSent)
+            TextButton(
+              onPressed: busy ? null : () { setState(() { otpSent = false; otp.clear(); message = null; }); },
+              child: const Text('Change mobile number'),
+            ),
+        ],
+        if (message != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(message!, style: TextStyle(fontSize: 12, color: hasError ? const Color(0xFFFF9AA5) : const Color(0xFF65E4BA))),
+          ),
       ]),
     ));
   }
