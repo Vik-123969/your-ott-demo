@@ -24,3 +24,12 @@ The app currently uses Supabase email/password authentication only. Phone OTP is
 
 ## Important production requirements
 This project is still under development and is not yet a complete commercial OTT service. Before public launch, configure licensed content rights, production video transcoding/HLS, CDN delivery, subscription/payment verification, security review, monitoring, customer support and applicable legal/privacy requirements. Never put a Supabase service-role key in the mobile app.
+
+
+## Subscription access (manual admin activation)
+- SQL migration: `supabase/migrations/003_subscriptions_access.sql`
+- Run this migration in the Supabase SQL Editor for the Mumbai `your-ott` project.
+- Admin Studio has a Subscriptions page to activate Monthly, Quarterly, Yearly or Lifetime access for an existing viewer, and cancel/reactivate records.
+- The Android Profile page displays the signed-in customer's active plan and expiry.
+- The `ott-videos` bucket is private; video reads require an admin account or an active subscription.
+- This is manual activation only. No payment gateway or automatic renewal is connected yet.
