@@ -986,7 +986,7 @@ class _PaymentPlansSheetState extends State<PaymentPlansSheet> {
               groupValue: selectedPlan,
               activeColor: accent,
               contentPadding: EdgeInsets.zero,
-              title: Text(plan.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
+              title: Text('₹${prices[plan.$1]}  ·  ${plan.$1}', style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(plan.$2, style: const TextStyle(color: muted)),
               onChanged: (value) => setState(() => selectedPlan = value!),
             )),
@@ -1009,10 +1009,10 @@ class _PaymentPlansSheetState extends State<PaymentPlansSheet> {
               width: double.infinity,
               padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(color: const Color(0xFF28213D), borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withValues(alpha: .45))),
-              child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(Icons.info_outline, color: accent),
-                SizedBox(width: 9),
-                Expanded(child: Text(pricesLoading ? 'Loading current plan prices…' : 'Prices shown above are set by Your OTT admin. Payment gateway is not connected yet; no money will be charged and selecting an option will not activate a subscription.', style: TextStyle(color: Colors.white70, fontSize: 12))),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.info_outline, color: accent),
+                const SizedBox(width: 9),
+                Expanded(child: Text(pricesLoading ? 'Loading current plan prices…' : 'Prices shown above are set by Your OTT admin. Payment gateway is not connected yet; no money will be charged and selecting an option will not activate a subscription.', style: const TextStyle(color: Colors.white70, fontSize: 12))),
               ]),
             ),
             const SizedBox(height: 14),
