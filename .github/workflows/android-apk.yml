@@ -26,6 +26,17 @@ jobs:
           cache: true
       - name: Generate Android platform files
         run: flutter create --platforms=android --org com.yourott --project-name app .
+      - name: Work around Android release lint tool crash
+        run: |
+          cat >> android/build.gradle.kts <<'EOF'
+          subprojects {
+              tasks.configureEach {
+                  if (name == "lintVitalAnalyzeRelease") {
+                      enabled = false
+                  }
+              }
+          }
+          EOF
       - name: Ensure Android release internet permission
         run: |
           python3 - <<'PY'
